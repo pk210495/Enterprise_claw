@@ -1,0 +1,446 @@
+# DANA Migration Blueprint (HTPs + NK + SK)
+
+Purpose
+This document is a comprehensive LLM-readable blueprint for converting an existing agent architecture into a DANA-style system that combines Hierarchical Task Plans (HTPs), Natural-Language Knowledge (NK), and Symbolic Knowledge (SK). DANA is a knowledge-first neuro-symbolic architecture built around first-class domain knowledge, explicit Knowledge Store and Program Store components, and explicit CAPTURE and APPLY processes.[cite:22]
+
+What DANA adds
+Most current LLM-agent systems rely on an LLM to create programs from scratch, use the LLM heavily during execution, and incorporate little or no explicit domain knowledge, which contributes to inconsistency and inaccuracy on complex tasks.[cite:22] DANA addresses this with three principles: first-class treatment of domain-specific knowledge, use of both natural-language and symbolic knowledge representations, and explicit modeling of knowledge capture and knowledge application.[cite:22]
+
+Scope
+This blueprint is written for teams that already have one or more existing agent architectures such as ReAct, plan-and-execute, tool-calling agents, workflow graphs, or multi-agent systems, and want to retrofit them into a more deterministic and auditable DANA variant. The target design here is a hybrid DANA variant that uses NK and SK together, and uses HTPs as the primary program form while permitting selective symbolic programs for deterministic subroutines; the DANA paper explicitly supports natural-language knowledge, symbolic knowledge, natural-language programs such as HTPs, and symbolic programs such as Python code.[cite:22]
+
+Non-goals
+This blueprint does not assume that all reasoning must become symbolic, because DANA is a flexible design space rather than a single rigid implementation.[cite:22] It also does not assume that the LLM should disappear from the system; instead, the LLM should move from being the sole planner and executor into being one controlled component alongside deterministic stores, rules, program selection, and structured execution.[cite:22]
+
+--------------------------------------------------
+1. Architectural target state
+--------------------------------------------------
+
+The migrated architecture should contain the following first-class runtime and authoring components:
+
+1. Knowledge Capture layer
+- Manual capture path for domain experts, AI engineers, product owners, compliance specialists, and operators.
+- Automated capture path for extracting knowledge from documents, interviews, SOPs, incident reports, code comments, wiki pages, and historical traces.
+- Knowledge validation and approval workflow before material enters production stores.
+
+2. Knowledge Store
+- NK repository for definitions, heuristics, policies, examples, exceptions, glossary terms, decision criteria, and procedural advice written in natural language.
+- SK repository for rules, constraints, equations, decision tables, schemas, ontologies, graph edges, logic clauses, guardrails, and validation checks in formal form.
+- Versioning, provenance, confidence scores, owners, timestamps, jurisdiction or business-unit scope, and retirement metadata.
+
+3. Program Store
+- HTP repository containing reusable Hierarchical Task Plans with metadata about what problem each plan solves, when it applies, required inputs, produced outputs, tool prerequisites, risk level, and evaluation hooks.
+- Optional symbolic program repository for deterministic subroutines such as calculators, validators, transformation pipelines, rule evaluators, SQL templates, or Python routines; the DANA paper treats symbolic programs such as Python code as a supported program form.[cite:22]
+
+4. Program Search layer
+- Program Finder to locate the best existing HTP for a task by using request metadata, NK retrieval, SK applicability checks, and plan metadata.
+- Program Creator to synthesize or refine an HTP when no existing program fits; in DANA, Program Finder and Program Creator are explicit mechanisms for locating known programs or creating new ones using domain knowledge.[cite:22]
+
+5. Execution layer
+- HTP executor that decomposes tasks into sub-tasks and routes each step to the right engine.
+- Neural execution path for interpretation, summarization, extraction, or ambiguity resolution over NK and retrieved evidence.
+- Symbolic execution path for rules, constraints, formulas, verification, deterministic transforms, and hard business logic over SK.
+- Tooling path for APIs, search, databases, code execution, workflow engines, queue systems, and enterprise applications.
+- Observation and refinement loop modeled after a structured reasoning cycle; the DANA implementation in OpenSSA uses Observe-Orient-Decide-Act reasoning for HTP execution.[cite:22]
+
+6. Governance and evaluation layer
+- Trace logs, step outputs, rule firings, plan choices, citations to knowledge items, and outcome evaluation.
+- Offline and online benchmarks for accuracy, consistency, latency, cost, safety, escalation rate, and user trust.
+
+Target migration principle
+The end state is not simply “RAG plus tools.” It is a knowledge-first system in which knowledge and plans are durable assets, not ephemeral prompt tokens, and where the LLM is guided by reusable plans and deterministic constraints rather than improvising the entire solution each run.[cite:22]
+
+--------------------------------------------------
+2. Core concepts and canonical definitions
+--------------------------------------------------
+
+HTPs
+HTPs are Hierarchical Task Plans: reusable natural-language programs that decompose a goal into sub-goals, tasks, and sometimes further nested tasks. In the DANA implementation, HTPs are the natural-language program form stored in the Program Store and executed through a structured reasoning loop.[cite:22]
+
+NK
+NK is Natural-Language Knowledge: domain facts, formulas, heuristics, rules of thumb, policy explanations, and context written in plain language, which are processed by neural engines such as LLMs.[cite:22]
+
+SK
+SK is Symbolic Knowledge: the same or complementary domain knowledge expressed in more formal representations such as logic rules, equations, constraints, schemas, or Prolog-style relations, which are processed by symbolic engines with deterministic operations.[cite:22]
+
+Recommended hybrid stance
+Use NK for breadth, nuance, ambiguity tolerance, explanation, onboarding, retrieval, and expert-authored narrative context. Use SK for determinism, enforcement, validation, eligibility checks, gating logic, calculation, invariant preservation, and high-stakes decisions. This split aligns directly with DANA’s distinction between NK being handled by neural engines and SK being handled by symbolic engines.[cite:22]
+
+--------------------------------------------------
+3. Migration strategy
+--------------------------------------------------
+
+Phase 0: Baseline the current architecture
+Inventory the existing system before changing anything.
+
+Capture the following:
+- Agent style: ReAct, planner-executor, single-agent tool caller, supervisor-worker, graph workflow, or multi-agent swarm.
+- Current tools and integrations.
+- Where the LLM plans, where it executes, and where deterministic logic already exists.
+- Current prompt templates and system messages.
+- Existing memory, retrieval, policy, routing, and validation layers.
+- Failure modes: hallucination, inconsistency, loops, tool misuse, weak retries, low determinism, low auditability, and policy violations.
+- Existing metrics: success rate, correction rate, human review rate, latency, token cost, and failure severity.
+
+Why this matters
+The DANA paper argues that inconsistency in current architectures often comes from LLM-created programs, heavy LLM involvement in execution, and limited domain-specific knowledge.[cite:22] Your baseline should explicitly map where those three issues currently appear.
+
+Phase 1: Externalize hidden knowledge
+Most existing agents already contain implicit knowledge scattered across prompts, code branches, few-shot examples, runbooks, and analyst habits. Extract it into NK and SK.
+
+Sources to mine:
+- System prompts, hidden prompts, tool descriptions.
+- SOPs and runbooks.
+- Policy docs and compliance manuals.
+- Analyst playbooks.
+- FAQ and support transcripts.
+- Historical successful agent traces.
+- Postmortems and incident tickets.
+- Validation code and hardcoded if-else branches.
+- Business logic in notebooks, SQL, spreadsheets, or ETL jobs.
+
+Phase 2: Build the first Knowledge Store
+Create an NK store and an SK store in parallel.
+
+NK initial contents:
+- Definitions and glossary.
+- Canonical examples.
+- Domain heuristics and rules of thumb.
+- Process guidance.
+- Exceptions and caveats.
+- Input interpretation notes.
+- Edge-case narratives.
+
+SK initial contents:
+- Deterministic rules.
+- Thresholds and cutoffs.
+- Formal formulas.
+- Eligibility constraints.
+- Dependency constraints.
+- Decision tables.
+- Schema and type checks.
+- Guardrails and forbidden actions.
+
+Phase 3: Build the first Program Store
+Start by converting your highest-volume or highest-risk workflows into HTPs.
+
+HTP candidate selection criteria:
+- Frequent tasks with repeatable structure.
+- High-value workflows with expensive errors.
+- Flows where human experts already follow a known procedure.
+- Tasks requiring multiple dependent tool calls.
+- Tasks where consistency matters more than creativity.
+
+Phase 4: Add Program Finder
+Introduce explicit plan selection before freeform reasoning. The Program Finder should use request classification, semantic retrieval over plan metadata, NK context retrieval, and SK precondition checks to choose a known HTP when possible; DANA explicitly includes Program Finder as a mechanism for finding applicable programs from the Program Store using domain knowledge.[cite:22]
+
+Phase 5: Add Program Creator
+When no known HTP fits, generate a draft HTP rather than letting the agent improvise every step. Store the proposed HTP, evaluate it, and promote it into the Program Store only after validation; DANA includes Program Creator to create new programs when no applicable pre-existing ones are found.[cite:22]
+
+Phase 6: Route execution by step type
+Each HTP step should declare whether it is primarily:
+- Neural-only.
+- Symbolic-only.
+- Tool-only.
+- Neural then symbolic.
+- Retrieval then neural.
+- Retrieval then symbolic.
+- Human-approval required.
+
+Phase 7: Add observability and evaluation
+Track which HTP was selected, which NK items were retrieved, which SK rules fired, which tools ran, what intermediate outputs were produced, and whether the result was consistent across repeated runs. DANA evaluates both average accuracy and average consistency and defines consistency over repeated runs against ground truth, which is a useful template for your own evaluation design.[cite:22]
+
+--------------------------------------------------
+4. Knowledge engineering design
+--------------------------------------------------
+
+4.1 NK schema
+Each NK item should support the following fields:
+- nk_id
+- title
+- domain
+- subdomain
+- summary
+- body
+- canonical_examples
+- exceptions
+- counterexamples
+- source_reference
+- owner
+- reviewer
+- created_at
+- updated_at
+- effective_from
+- effective_to
+- confidence
+- jurisdiction
+- business_scope
+- tags
+- linked_sk_ids
+- linked_htp_ids
+- test_cases
+- status
+
+Recommended NK writing rules
+- Write one concept per item.
+- Prefer declarative language.
+- Separate rule from rationale.
+- Include examples and counterexamples.
+- Encode ambiguity explicitly.
+- Mark stale or provisional knowledge.
+- Avoid hiding hard constraints inside prose; if it must never be violated, mirror it in SK.
+
+4.2 SK schema
+Each SK item should support:
+- sk_id
+- type: rule, formula, constraint, schema, ontology edge, decision table, state transition, validator
+- title
+- formal_representation
+- natural_language_explanation
+- inputs
+- outputs
+- preconditions
+- postconditions
+- severity_if_violated
+- source_reference
+- owner
+- reviewer
+- version
+- effective_window
+- linked_nk_ids
+- linked_htp_ids
+- unit_tests
+- simulation_tests
+- status
+
+Recommended SK forms
+- JSON rules for portability.
+- SQL or data quality checks.
+- Python functions for deterministic transforms.
+- Decision tables for policy logic.
+- Prolog or Datalog for explainable rule inference.
+- JSON Schema or Pydantic for data contracts.
+- State machines for workflow invariants.
+
+4.3 NK-SK pairing strategy
+Every critical domain concept should ideally have:
+- NK for explanation and retrieval.
+- SK for enforcement and verification.
+- HTP references showing where the concept is operationalized.
+
+Example pairing
+- NK: “For account reconciliation, a discrepancy under threshold X may be tolerated if source A is known to lag source B by up to 24 hours.”
+- SK: tolerance_threshold(account_type, source_pair, max_delta, time_window).
+- HTP step: “Check reconciliation discrepancy using tolerance rule set before escalating.”
+
+4.4 Knowledge capture workflow
+Recommended pipeline:
+1. Intake source material.
+2. Chunk and classify into candidate NK, candidate SK, candidate HTP fragments.
+3. Human review by domain owner.
+4. Normalize terminology.
+5. Link related knowledge items.
+6. Generate tests and example cases.
+7. Approve into staging.
+8. Run benchmark and regression checks.
+9. Promote to production.
+
+This aligns with DANA’s explicit CAPTURE process and the paper’s distinction between manual capture and automated capture using a Knowledge Encoding Assistant.[cite:22]
+
+--------------------------------------------------
+5. HTP design standard
+--------------------------------------------------
+
+5.1 HTP purpose
+An HTP is the operational program that turns knowledge into action. It should capture how experts solve a recurring problem, using a hierarchical decomposition that is understandable to humans and executable by the system; the DANA implementation uses HTPs as natural-language programs in the Program Store.[cite:22]
+
+5.2 HTP schema
+Use a schema like this:
+
+htp_id:
+name:
+version:
+domain:
+subdomain:
+problem_statement:
+business_goal:
+applicability_criteria:
+non_applicability_criteria:
+risk_level:
+required_inputs:
+optional_inputs:
+expected_outputs:
+success_criteria:
+failure_conditions:
+preconditions:
+postconditions:
+linked_nk_ids:
+linked_sk_ids:
+linked_tools:
+linked_symbolic_programs:
+escalation_policy:
+observability_hooks:
+evaluation_checks:
+steps:
+
+Each step should include:
+- step_id
+- parent_step_id
+- name
+- description
+- objective
+- inputs
+- outputs
+- dependencies
+- step_type
+- preferred_engine
+- allowed_tools
+- nk_context_needed
+- sk_checks_needed
+- symbolic_programs_needed
+- expected_artifact
+- confidence_threshold
+- retry_policy
+- fallback_policy
+- human_review_gate
+- logging_fields
+- pass_fail_criteria
+
+5.3 HTP writing rules
+- One HTP per stable problem pattern.
+- Describe the goal in business language, not only technical language.
+- Include explicit applicability boundaries.
+- Separate retrieval, interpretation, calculation, validation, judgment, and communication steps.
+- Mark which steps may use freeform generation.
+- Mark which steps require deterministic SK or symbolic programs.
+- Include escalation points.
+- Include expected failure modes.
+- Keep steps granular enough for tracing, but not so granular that the plan becomes unmanageable.
+
+5.4 HTP execution contract
+For each step, define exactly:
+- What must be true before the step runs.
+- Which knowledge items must be loaded.
+- Which tools are allowed.
+- Which outputs are acceptable.
+- Which SK rules must verify the result.
+- What to do when the result is ambiguous, missing, or contradictory.
+
+5.5 Recommended step taxonomy
+- classify_request
+- gather_inputs
+- resolve_entities
+- retrieve_nk
+- retrieve_sk
+- select_rule_set
+- select_data_sources
+- call_tool
+- transform_data
+- compute_metric
+- verify_constraint
+- compare_alternatives
+- assess_risk
+- generate_explanation
+- format_output
+- request_human_review
+- persist_outcome
+
+--------------------------------------------------
+6. Runtime routing pattern
+--------------------------------------------------
+
+At runtime, use the following control flow:
+
+1. Intake and normalize request.
+2. Classify domain, intent, stakes, and risk.
+3. Retrieve candidate HTPs from Program Store.
+4. Check applicability using NK metadata and SK preconditions.
+5. Select best HTP, else invoke Program Creator to draft one.
+6. For each HTP step:
+- Load required NK context.
+- Load required SK rules or symbolic programs.
+- Execute with the designated engine.
+- Validate outputs with SK and schemas.
+- Log trace, confidence, evidence, and rule firings.
+- Retry or fallback if pass criteria are not met.
+7. Aggregate outputs.
+8. Run final validation and policy checks.
+9. Route to human if required.
+10. Persist trace and learning artifacts.
+
+Key routing heuristic
+Use the LLM for semantic interpretation and synthesis, but never as the final arbiter of a hard rule, formula, threshold, or forbidden action when an SK form is available. This is the practical expression of DANA’s emphasis on more symbolic structure and deterministic operations for consistency.[cite:22]
+
+--------------------------------------------------
+7. Converting a current agent into DANA components
+--------------------------------------------------
+
+7.1 If your current system is ReAct
+Typical current pattern:
+- LLM reasons.
+- LLM chooses tool.
+- Tool returns result.
+- LLM reasons again.
+
+DANA migration:
+- Add HTP selection before ReAct loop.
+- Restrict the ReAct loop to only the steps permitted by the HTP.
+- Preload NK for interpretation steps.
+- Apply SK before and after sensitive tool calls.
+- Replace freeform final synthesis with a structured output contract validated by SK and schemas.
+
+7.2 If your current system is planner-executor
+Typical current pattern:
+- LLM creates a plan from scratch.
+- Executor runs it.
+
+DANA migration:
+- Replace plan-from-scratch with Program Finder plus Program Store.
+- Allow Program Creator only when no known HTP exists.
+- Save validated created plans back into Program Store.
+- Split plan steps by engine type and validation requirements.
+
+7.3 If your current system is a graph workflow
+Typical current pattern:
+- Nodes wired manually.
+- Some branching logic in code.
+
+DANA migration:
+- Treat each reusable graph as an HTP-backed program.
+- Externalize branch logic into SK rather than burying it in code.
+- Externalize guidance and edge cases into NK.
+- Add metadata to each graph for Program Finder retrieval.
+
+7.4 If your current system is multi-agent
+Typical current pattern:
+- Supervisor delegates to specialists.
+- Specialists use their own prompts and tools.
+
+DANA migration:
+- Keep specialists, but bind them to HTP steps or HTP subtrees.
+- Give each specialist a scoped NK view and SK rule pack.
+- Add a symbolic verification specialist or policy gate at key merge points.
+- Ensure inter-agent messages are schema-checked and policy-checked.
+
+--------------------------------------------------
+8. Example reference implementation shapes
+--------------------------------------------------
+
+8.1 HTP in YAML-like form
+
+htp_id: fin.calc.margin.v1
+name: Compute net profit margin and assess health
+version: 1.0
+problem_statement: Determine net profit margin for a reporting period and assess whether it is healthy for the company context.
+applicability_criteria:
+  - request concerns a company financial period
+  - revenue and net income can be sourced from trusted filings
+linked_nk_ids:
+  - nk.finance.margin_definition
+  - nk.finance.industry_comparison_guidance
+linked_sk_ids:
+  - sk.finance.margin_formula
+  - sk.finance.input_validation
+steps:
+  - step_id: s1
+    name: Resolve reporting

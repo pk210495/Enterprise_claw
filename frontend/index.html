@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Server</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+/* ===== CSS Variables / Theming ===== */
+:root {
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+  --bg-hover: #333;
+  --bg-user-msg: #2563eb;
+  --bg-assistant-msg: #1e1e1e;
+  --text-primary: #e5e5e5;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666;
+  --border-color: #2a2a2a;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --transition: 150ms ease;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  --sidebar-width: 280px;
+  --header-height: 52px;
+  --input-area-min: 72px;
+}
+
+/* ===== Reset ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+button { cursor: pointer; font-family: inherit; border: none; background: none; color: inherit; }
+textarea { font-family: inherit; }
+
+/* ===== Layout ===== */
+.app { display: flex; height: 100vh; }
+
+/* ===== Sidebar ===== */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+  z-index: 100;
+}
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+.new-session-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+.new-session-btn:hover { background: var(--accent-hover); }
+.new-session-btn svg { width: 16px; height: 16px; }
+
+.sidebar-section { padding: 12px 16px 6px; }
+.sidebar-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+.session-list::-webkit-scrollbar { width: 4px; }
+.session-list::-webkit-scrollbar-track { background: transparent; }
+.session-list::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+
+.session-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition);
+  margin-bottom: 2px;
+  position: relative;
+  gap: 8px;
+}
+.session-item:hover { background: var(--bg-hover); }
+.session-item.active { background: var(--bg-tertiary); }
+.session-item-icon {
+  width: 18px; height: 18px; flex-shrink: 0;
+  color: var(--text-secondary);
+}
+.session-item-text {
+  flex: 1;
+  min-width: 0;
+}
+.session-item-name {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-item-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.session-delete-btn {
+  opacity: 0;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.session-item:hover .session-delete-btn { opacity: 1; }
+.session-delete-btn:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+
+/* Sidebar bottom panels */
+.sidebar-bottom {
+  border-top: 1px solid var(--border-color);
+  padding: 12px 16px;
+}
+.skill-selector {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-top: 4px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a0a0a0' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.skill-selector:focus { outline: none; border-color: var(--accent); }
+
+.provider-list { margin-top: 8px; }
+.provider-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.healthy { background: var(--success); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+.status-dot.unhealthy { background: var(--danger); box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+.status-dot.unknown { background: var(--text-muted); }
+
+/* ===== Main Content ===== */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Header */
+.header {
+  height: var(--header-height);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.menu-toggle {
+  display: none;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+.menu-toggle:hover { background: var(--bg-tertiary); }
+.header-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.header-spacer { flex: 1; }
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Chat area */
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 0;
+  scroll-behavior: smooth;
+}
+.chat-area::-webkit-scrollbar { width: 6px; }
+.chat-area::-webkit-scrollbar-track { background: transparent; }
+.chat-area::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+
+.messages-container {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.welcome-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 40px;
+}
+.welcome-icon {
+  width: 56px; height: 56px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.welcome-icon svg { width: 28px; height: 28px; color: var(--accent); }
+.welcome-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.welcome-sub { color: var(--text-secondary); font-size: 14px; max-width: 400px; }
+
+/* Message bubbles */
+.message {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  animation: msgIn 0.3s ease;
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.message.user { flex-direction: row-reverse; }
+.message-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.message.assistant .message-avatar {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+}
+.message.user .message-avatar {
+  background: var(--accent);
+  color: #fff;
+}
+.message-content {
+  max-width: 85%;
+  min-width: 0;
+}
+.message-bubble {
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  line-height: 1.65;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.message.assistant .message-bubble {
+  background: var(--bg-assistant-msg);
+  border: 1px solid var(--border-color);
+  border-top-left-radius: 4px;
+}
+.message.user .message-bubble {
+  background: var(--bg-user-msg);
+  color: #fff;
+  border-top-right-radius: 4px;
+}
+.message-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  padding: 0 4px;
+}
+.message.user .message-time { text-align: right; }
+
+/* Markdown rendering inside assistant messages */
+.message-bubble p { margin: 0 0 8px; }
+.message-bubble p:last-child { margin-bottom: 0; }
+.message-bubble ul, .message-bubble ol { margin: 4px 0 8px 20px; }
+.message-bubble li { margin-bottom: 2px; }
+.message-bubble h1, .message-bubble h2, .message-bubble h3,
+.message-bubble h4, .message-bubble h5, .message-bubble h6 {
+  margin: 16px 0 8px;
+  line-height: 1.3;
+}
+.message-bubble h1 { font-size: 1.4em; }
+.message-bubble h2 { font-size: 1.25em; }
+.message-bubble h3 { font-size: 1.1em; }
+.message-bubble code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: rgba(255,255,255,0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.message-bubble pre {
+  margin: 10px 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #0d1117;
+  border: 1px solid var(--border-color);
+}
+.message-bubble pre code {
+  display: block;
+  padding: 14px 16px;
+  background: none;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.copy-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+}
+.copy-btn:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+.message-bubble blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+.message-bubble a { color: var(--accent); text-decoration: none; }
+.message-bubble a:hover { text-decoration: underline; }
+.message-bubble table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+}
+.message-bubble th, .message-bubble td {
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 13px;
+}
+.message-bubble th { background: rgba(255,255,255,0.04); font-weight: 600; }
+
+/* Tool usage indicator */
+.tool-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.2);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--warning);
+  margin: 6px 0;
+}
+.tool-indicator svg { width: 14px; height: 14px; animation: spin 1.5s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Thinking indicator */
+.thinking {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  animation: msgIn 0.3s ease;
+}
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+  padding: 16px 20px;
+  background: var(--bg-assistant-msg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  border-top-left-radius: 4px;
+}
+.thinking-dots span {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: bounce 1.4s infinite both;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.16s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.32s; }
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ===== Input Area ===== */
+.input-area {
+  padding: 12px 24px 16px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.input-container {
+  max-width: 780px;
+  margin: 0 auto;
+  position: relative;
+}
+.input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  transition: border-color var(--transition);
+  gap: 8px;
+}
+.input-wrapper:focus-within { border-color: var(--accent); }
+.chat-input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  padding: 6px 8px;
+  max-height: 160px;
+  min-height: 24px;
+}
+.chat-input::placeholder { color: var(--text-muted); }
+.chat-input:focus { outline: none; }
+.send-btn {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.send-btn:hover:not(:disabled) { background: var(--accent-hover); transform: scale(1.05); }
+.send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.send-btn svg { width: 18px; height: 18px; }
+.input-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  padding: 0 4px;
+}
+.char-count { font-size: 11px; color: var(--text-muted); }
+.input-hint { font-size: 11px; color: var(--text-muted); }
+
+/* ===== Overlay for mobile sidebar ===== */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 99;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    transform: translateX(-100%);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-overlay.show { display: block; }
+  .menu-toggle { display: flex; }
+  .messages-container { padding: 0 16px; }
+  .input-area { padding: 8px 12px 12px; }
+}
+
+/* ===== Scrollbar global ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+
+/* ===== Empty state ===== */
+.no-sessions {
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <button class="new-session-btn" onclick="createNewSession()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Session
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Sessions</div>
+    </div>
+    <div class="session-list" id="sessionList">
+      <div class="no-sessions">No sessions yet</div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="sidebar-label">Active Skill</div>
+      <select class="skill-selector" id="skillSelector">
+        <option value="">Default (no skill)</option>
+      </select>
+
+      <div class="sidebar-label" style="margin-top:14px">Providers</div>
+      <div class="provider-list" id="providerList">
+        <div class="provider-item"><span class="status-dot unknown"></span>Loading...</div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="header">
+      <button class="menu-toggle" onclick="toggleSidebar()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="header-title">Agent Server</div>
+      <div class="header-spacer"></div>
+      <div class="connection-status" id="connectionStatus">
+        <span class="status-dot unknown" id="healthDot"></span>
+        <span id="healthText">Checking...</span>
+      </div>
+    </div>
+
+    <div class="chat-area" id="chatArea">
+      <div class="messages-container" id="messagesContainer">
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/></svg>
+          </div>
+          <h2 class="welcome-title">Agent Server</h2>
+          <p class="welcome-sub">Start a conversation by typing a message below, or select an existing session from the sidebar.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-container">
+        <div class="input-wrapper">
+          <textarea class="chat-input" id="chatInput" rows="1"
+            placeholder="Type a message..."
+            onkeydown="handleInputKeydown(event)"
+            oninput="autoResize(this); updateCharCount()"></textarea>
+          <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <div class="input-footer">
+          <span class="input-hint">Shift+Enter for new line</span>
+          <span class="char-count" id="charCount">0</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ===== Configuration =====
+const API_BASE = 'http://localhost:8000';
+
+// ===== State =====
+let currentSessionId = null;
+let isStreaming = false;
+let abortController = null;
+let sessions = [];
+let skills = [];
+
+// ===== Markdown setup =====
+marked.setOptions({
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  },
+  breaks: true,
+  gfm: true
+});
+
+// Custom renderer for code blocks with copy button
+const renderer = new marked.Renderer();
+renderer.code = function(obj) {
+  const text = typeof obj === 'object' ? obj.text : obj;
+  const lang = typeof obj === 'object' ? (obj.lang || '') : (arguments[1] || '');
+  const highlighted = lang && hljs.getLanguage(lang)
+    ? hljs.highlight(text, { language: lang }).value
+    : hljs.highlightAuto(text).value;
+  const label = lang || 'code';
+  return `<div class="code-header"><span>${label}</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="hljs">${highlighted}</code></pre>`;
+};
+marked.setOptions({ renderer });
+
+// ===== API Helpers =====
+async function api(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ===== Health Check =====
+async function checkHealth() {
+  const dot = document.getElementById('healthDot');
+  const text = document.getElementById('healthText');
+  try {
+    const data = await api('/health');
+    if (data.status === 'ok') {
+      dot.className = 'status-dot healthy';
+      text.textContent = 'Connected';
+    } else {
+      dot.className = 'status-dot unhealthy';
+      text.textContent = 'Degraded';
+    }
+  } catch {
+    dot.className = 'status-dot unhealthy';
+    text.textContent = 'Disconnected';
+  }
+}
+
+// ===== Sessions =====
+async function loadSessions() {
+  try {
+    const data = await api('/sessions');
+    sessions = data.sessions || [];
+    renderSessions();
+  } catch (e) {
+    console.error('Failed to load sessions:', e);
+  }
+}
+
+function renderSessions() {
+  const el = document.getElementById('sessionList');
+  if (!sessions.length) {
+    el.innerHTML = '<div class="no-sessions">No sessions yet</div>';
+    return;
+  }
+  const sorted = [...sessions].sort((a, b) => new Date(b.modified_at) - new Date(a.modified_at));
+  el.innerHTML = sorted.map(s => {
+    const shortId = s.session_id.slice(0, 8);
+    const date = new Date(s.modified_at);
+    const timeStr = date.toLocaleDateString(undefined, { month:'short', day:'numeric' }) +
+                    ' ' + date.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+    const active = s.session_id === currentSessionId ? ' active' : '';
+    return `
+      <div class="session-item${active}" onclick="selectSession('${s.session_id}')" data-id="${s.session_id}">
+        <svg class="session-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+        <div class="session-item-text">
+          <div class="session-item-name">${shortId}</div>
+          <div class="session-item-meta">${timeStr}</div>
+        </div>
+        <button class="session-delete-btn" onclick="event.stopPropagation(); deleteSession('${s.session_id}')" title="Delete session">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+          </svg>
+        </button>
+      </div>`;
+  }).join('');
+}
+
+async function selectSession(id) {
+  currentSessionId = id;
+  renderSessions();
+  closeSidebarMobile();
+  await loadHistory(id);
+}
+
+async function createNewSession() {
+  // Generate a UUID-like id client-side; the server will create it on first message
+  currentSessionId = crypto.randomUUID();
+  renderSessions();
+  clearChat();
+  closeSidebarMobile();
+  document.getElementById('chatInput').focus();
+}
+
+async function deleteSession(id) {
+  if (!confirm('Delete this session?')) return;
+  try {
+    await api(`/sessions/${id}`, { method: 'DELETE' });
+    if (currentSessionId === id) {
+      currentSessionId = null;
+      clearChat();
+    }
+    await loadSessions();
+  } catch (e) {
+    console.error('Failed to delete session:', e);
+  }
+}
+
+async function loadHistory(sessionId) {
+  const container = document.getElementById('messagesContainer');
+  container.innerHTML = '';
+  document.getElementById('welcomeScreen')?.remove();
+  try {
+    const data = await api(`/sessions/${sessionId}/history`);
+    const messages = data.messages || [];
+    if (!messages.length) {
+      showWelcome();
+      return;
+    }
+    messages.forEach(m => appendMessage(m.role, m.content, false));
+    scrollToBottom();
+  } catch (e) {
+    console.error('Failed to load history:', e);
+    showWelcome();
+  }
+}
+
+// ===== Skills =====
+async function loadSkills() {
+  try {
+    const data = await api('/skills');
+    // API returns {skills: {name: "core"|"custom"}} — convert to array
+    const raw = data.skills || {};
+    skills = Array.isArray(raw) ? raw : Object.keys(raw);
+    const sel = document.getElementById('skillSelector');
+    sel.innerHTML = '<option value="">Default (no skill)</option>' +
+      skills.map(name => {
+        const source = raw[name] || '';
+        const label = source === 'custom' ? `${name} ★` : name;
+        return `<option value="${name}">${label}</option>`;
+      }).join('');
+  } catch (e) {
+    console.error('Failed to load skills:', e);
+  }
+}
+
+// ===== Providers =====
+async function loadProviders() {
+  try {
+    const data = await api('/providers/status');
+    const providers = data.providers || [];
+    const el = document.getElementById('providerList');
+    if (!providers.length) {
+      el.innerHTML = '<div class="provider-item"><span class="status-dot unknown"></span>None configured</div>';
+      return;
+    }
+    el.innerHTML = providers.map(p => {
+      const cls = p.healthy ? 'healthy' : 'unhealthy';
+      return `<div class="provider-item"><span class="status-dot ${cls}"></span>${p.name}</div>`;
+    }).join('');
+  } catch (e) {
+    console.error('Failed to load providers:', e);
+    document.getElementById('providerList').innerHTML =
+      '<div class="provider-item"><span class="status-dot unhealthy"></span>Error loading</div>';
+  }
+}
+
+// ===== Chat =====
+function clearChat() {
+  const container = document.getElementById('messagesContainer');
+  container.innerHTML = '';
+  showWelcome();
+}
+
+function showWelcome() {
+  const container = document.getElementById('messagesContainer');
+  if (document.getElementById('welcomeScreen')) return;
+  container.innerHTML = `
+    <div class="welcome-screen" id="welcomeScreen">
+      <div class="welcome-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/></svg>
+      </div>
+      <h2 class="welcome-title">Agent Server</h2>
+      <p class="welcome-sub">Start a conversation by typing a message below, or select an existing session from the sidebar.</p>
+    </div>`;
+}
+
+function removeWelcome() {
+  const w = document.getElementById('welcomeScreen');
+  if (w) w.remove();
+}
+
+function appendMessage(role, content, animate = true) {
+  removeWelcome();
+  const container = document.getElementById('messagesContainer');
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+  if (!animate) div.style.animation = 'none';
+
+  const avatarLetter = role === 'user' ? 'U' : 'A';
+  const time = new Date().toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+
+  let rendered = content;
+  if (role === 'assistant') {
+    rendered = processAssistantContent(content);
+  } else {
+    rendered = escapeHtml(content);
+  }
+
+  div.innerHTML = `
+    <div class="message-avatar">${avatarLetter}</div>
+    <div class="message-content">
+      <div class="message-bubble">${rendered}</div>
+      <div class="message-time">${time}</div>
+    </div>`;
+
+  container.appendChild(div);
+  return div;
+}
+
+function processAssistantContent(content) {
+  // Replace [using tools...] patterns with visual indicator
+  const toolPattern = /\[using tools?\.{0,3}\]/gi;
+  let processed = content.replace(toolPattern, () =>
+    `<div class="tool-indicator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4m-7.07-15.07l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>Using tools...</div>`
+  );
+  try {
+    return marked.parse(processed);
+  } catch {
+    return escapeHtml(processed);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function showThinking() {
+  removeWelcome();
+  const container = document.getElementById('messagesContainer');
+  const div = document.createElement('div');
+  div.className = 'thinking';
+  div.id = 'thinkingIndicator';
+  div.innerHTML = `
+    <div class="message-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">A</div>
+    <div class="thinking-dots"><span></span><span></span><span></span></div>`;
+  container.appendChild(div);
+  scrollToBottom();
+}
+
+function removeThinking() {
+  const el = document.getElementById('thinkingIndicator');
+  if (el) el.remove();
+}
+
+function scrollToBottom() {
+  const area = document.getElementById('chatArea');
+  requestAnimationFrame(() => {
+    area.scrollTop = area.scrollHeight;
+  });
+}
+
+// ===== Send Message =====
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text || isStreaming) return;
+
+  // Ensure session
+  if (!currentSessionId) {
+    currentSessionId = crypto.randomUUID();
+  }
+
+  // Display user message
+  appendMessage('user', text);
+  scrollToBottom();
+  input.value = '';
+  autoResize(input);
+  updateCharCount();
+
+  const skill = document.getElementById('skillSelector').value || undefined;
+  const body = { session_id: currentSessionId, message: text };
+  if (skill) body.skill = skill;
+
+  isStreaming = true;
+  updateSendBtn();
+  showThinking();
+
+  // Try SSE streaming first
+  try {
+    await streamChat(body);
+  } catch (e) {
+    console.warn('Streaming failed, falling back to regular chat:', e);
+    removeThinking();
+    try {
+      await fallbackChat(body);
+    } catch (e2) {
+      removeThinking();
+      appendMessage('assistant', 'Error: Failed to get response. Please check that the server is running.');
+      scrollToBottom();
+    }
+  }
+
+  isStreaming = false;
+  updateSendBtn();
+  loadSessions(); // refresh session list
+}
+
+async function streamChat(body) {
+  abortController = new AbortController();
+
+  const res = await fetch(`${API_BASE}/chat/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: abortController.signal
+  });
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  removeThinking();
+
+  const msgDiv = appendMessage('assistant', '');
+  const bubble = msgDiv.querySelector('.message-bubble');
+  let fullText = '';
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6);
+      if (data === '[DONE]') break;
+      fullText += data;
+      bubble.innerHTML = processAssistantContent(fullText);
+      scrollToBottom();
+    }
+  }
+
+  // Final render
+  if (fullText) {
+    bubble.innerHTML = processAssistantContent(fullText);
+    scrollToBottom();
+  }
+}
+
+async function fallbackChat(body) {
+  const data = await api('/chat', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+  removeThinking();
+  appendMessage('assistant', data.reply || 'No response');
+  scrollToBottom();
+
+  // Update session id if server assigned one
+  if (data.session_id) currentSessionId = data.session_id;
+}
+
+// ===== UI Helpers =====
+function handleInputKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+function updateCharCount() {
+  const input = document.getElementById('chatInput');
+  const count = document.getElementById('charCount');
+  const len = input.value.length;
+  count.textContent = len > 0 ? len.toLocaleString() : '0';
+}
+
+function updateSendBtn() {
+  const btn = document.getElementById('sendBtn');
+  const input = document.getElementById('chatInput');
+  btn.disabled = isStreaming || !input.value.trim();
+}
+
+document.getElementById('chatInput').addEventListener('input', () => updateSendBtn());
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('show');
+}
+
+function closeSidebarMobile() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('show');
+}
+
+function copyCode(btn) {
+  const pre = btn.closest('.message-bubble').querySelector('pre code');
+  if (!pre) return;
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+}
+
+// ===== Init =====
+async function init() {
+  await Promise.all([
+    checkHealth(),
+    loadSessions(),
+    loadSkills(),
+    loadProviders()
+  ]);
+
+  // Periodic health check
+  setInterval(checkHealth, 15000);
+  setInterval(loadProviders, 30000);
+
+  document.getElementById('chatInput').focus();
+}
+
+init();
+</script>
+</body>
+</html>
