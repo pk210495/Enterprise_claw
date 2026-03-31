@@ -21,8 +21,14 @@ class SubagentPool:
         logger.info(f"subagent pool initialised — max_concurrent={self._max_concurrent}")
 
     def _get_semaphore(self) -> asyncio.Semaphore:
-        # Created lazily inside a running event loop — safe
+        # Created lazily on first use, always inside the running event loop.
+        # asyncio.Semaphore() must be created in the loop it will be used in,
+        # so we defer creation until the first async call rather than __init__.
         if self._semaphore is None:
+            loop = asyncio.get_running_loop()
+            # Guard against a stale semaphore from a previous event loop
+            if getattr(self._semaphore, "_loop", loop) is not loop:
+                self._semaphore = None
             self._semaphore = asyncio.Semaphore(self._max_concurrent)
         return self._semaphore
 

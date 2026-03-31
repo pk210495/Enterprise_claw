@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import AsyncGenerator
 
@@ -27,20 +28,45 @@ class GoogleProvider(BaseProvider):
     def name(self) -> str:
         return "google"
 
+    def _convert_tools(self, tools: list[dict]):
+        """Convert OpenAI-style tool schemas to Gemini function_declarations."""
+        import google.generativeai as genai
+        declarations = []
+        for t in tools:
+            fn = t.get("function", t)
+            params = fn.get("parameters", {"type": "object", "properties": {}})
+            declarations.append(
+                genai.protos.FunctionDeclaration(
+                    name=fn.get("name", ""),
+                    description=fn.get("description", ""),
+                    parameters=genai.protos.Schema(
+                        type=genai.protos.Type.OBJECT,
+                        properties={
+                            k: genai.protos.Schema(
+                                type=genai.protos.Type[v.get("type", "string").upper()]
+                                if v.get("type", "string").upper() in ("STRING", "NUMBER", "INTEGER", "BOOLEAN", "ARRAY", "OBJECT")
+                                else genai.protos.Type.STRING,
+                                description=v.get("description", ""),
+                            )
+                            for k, v in params.get("properties", {}).items()
+                        },
+                        required=params.get("required", []),
+                    ),
+                )
+            )
+        return [genai.protos.Tool(function_declarations=declarations)] if declarations else []
+
     async def chat(
         self,
         messages: list[dict],
         tools: list[dict] | None = None,
         stream: bool = True,
     ) -> AsyncGenerator[dict, None]:
-        import asyncio
         genai = self._get_client()
-        model = genai.GenerativeModel(self._default_model)
 
         # split system prompt from conversation
         system_parts = [m["content"] for m in messages if m.get("role") == "system"]
         history = []
-        last_user = None
 
         for m in messages:
             role = m.get("role")
@@ -48,7 +74,6 @@ class GoogleProvider(BaseProvider):
             if role == "system":
                 continue
             elif role == "user":
-                last_user = content
                 history.append({"role": "user", "parts": [content]})
             elif role == "assistant":
                 history.append({"role": "model", "parts": [content]})
@@ -58,8 +83,13 @@ class GoogleProvider(BaseProvider):
             sys_text = "\n\n".join(system_parts)
             history[0]["parts"] = [f"{sys_text}\n\n{history[0]['parts'][0]}"]
 
-        chat = model.start_chat(history=history[:-1] if len(history) > 1 else [])
         last_msg = history[-1]["parts"][0] if history else ""
+        gemini_tools = self._convert_tools(tools) if tools else []
+
+        model_kwargs = {}
+        if gemini_tools:
+            model_kwargs["tools"] = gemini_tools
+        model = genai.GenerativeModel(self._default_model, **model_kwargs)
 
         full_text = ""
 
@@ -68,19 +98,37 @@ class GoogleProvider(BaseProvider):
                 return model.generate_content(last_msg, stream=True)
             return model.generate_content(last_msg)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(None, _send)
 
         if stream:
+            # Streaming: collect full response then check for function calls
             for chunk in response:
-                text = chunk.text if hasattr(chunk, "text") else ""
-                if text:
-                    full_text += text
-                    yield {"type": "text", "content": text}
+                for part in (chunk.candidates[0].content.parts if chunk.candidates else []):
+                    if hasattr(part, "function_call") and part.function_call.name:
+                        fc = part.function_call
+                        yield {
+                            "type": "tool_call",
+                            "id": f"gemini_{fc.name}",
+                            "name": fc.name,
+                            "arguments": dict(fc.args),
+                        }
+                    elif hasattr(part, "text") and part.text:
+                        full_text += part.text
+                        yield {"type": "text", "content": part.text}
         else:
-            text = response.text if hasattr(response, "text") else ""
-            full_text = text
-            yield {"type": "text", "content": text}
+            for part in (response.candidates[0].content.parts if response.candidates else []):
+                if hasattr(part, "function_call") and part.function_call.name:
+                    fc = part.function_call
+                    yield {
+                        "type": "tool_call",
+                        "id": f"gemini_{fc.name}",
+                        "name": fc.name,
+                        "arguments": dict(fc.args),
+                    }
+                elif hasattr(part, "text") and part.text:
+                    full_text += part.text
+                    yield {"type": "text", "content": part.text}
 
         yield {"type": "done", "content": full_text}
 
@@ -94,10 +142,9 @@ class GoogleProvider(BaseProvider):
 
     async def is_healthy(self) -> bool:
         try:
-            import asyncio
             import google.generativeai as genai
             genai.configure(api_key=self._api_key)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, lambda: list(genai.list_models()))
             return True
         except Exception as e:

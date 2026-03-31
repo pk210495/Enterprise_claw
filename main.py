@@ -10,13 +10,12 @@ import logging
 import os
 import stat
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from api.routes import router
@@ -129,6 +128,33 @@ async def warmup_providers():
 #  FASTAPI APP
 # ═══════════════════════════════════════════════════════════════════════════
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──────────────────────────────────────────────────────────
+    logger.info("━" * 60)
+    logger.info("  PYTHON AGENT SERVER  starting up")
+    logger.info("━" * 60)
+
+    ensure_directories()
+    enforce_security_permissions()
+    check_security_integrity()
+    check_soul()
+
+    logger.info("Provider health check:")
+    await warmup_providers()
+
+    logger.info("━" * 60)
+    logger.info(f"  Server ready at http://{config.server.host}:{config.server.port}")
+    logger.info(f"  API docs:       http://{config.server.host}:{config.server.port}/docs")
+    logger.info(f"  WebSocket:      ws://{config.server.host}:{config.server.port}/ws/{{session_id}}")
+    logger.info("━" * 60)
+
+    yield  # application runs here
+
+    # ── Shutdown ─────────────────────────────────────────────────────────
+    logger.info("Agent server shutting down.")
+
+
 app = FastAPI(
     title="Python Agent Server",
     description=(
@@ -138,6 +164,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -156,34 +183,6 @@ FRONTEND_DIR = Path(__file__).parent / "frontend"
 @app.get("/", include_in_schema=False)
 async def serve_frontend():
     return FileResponse(FRONTEND_DIR / "index.html")
-
-
-@app.on_event("startup")
-async def startup():
-    logger.info("━" * 60)
-    logger.info("  PYTHON AGENT SERVER  starting up")
-    logger.info("━" * 60)
-
-    # 1 — security checks (hard exits on failure)
-    ensure_directories()
-    enforce_security_permissions()
-    check_security_integrity()
-    check_soul()
-
-    # 2 — provider warmup
-    logger.info("Provider health check:")
-    await warmup_providers()
-
-    logger.info("━" * 60)
-    logger.info(f"  Server ready at http://{config.server.host}:{config.server.port}")
-    logger.info(f"  API docs:       http://{config.server.host}:{config.server.port}/docs")
-    logger.info(f"  WebSocket:      ws://{config.server.host}:{config.server.port}/ws/{{session_id}}")
-    logger.info("━" * 60)
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    logger.info("Agent server shutting down.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

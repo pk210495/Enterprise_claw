@@ -32,7 +32,7 @@ class SessionManager:
                         try:
                             self._messages.append(json.loads(line))
                         except json.JSONDecodeError:
-                            pass
+                            logger.warning(f"session '{self.session_id}': skipping corrupt line in JSONL")
             logger.debug(f"session '{self.session_id}' loaded {len(self._messages)} messages")
 
     def save(self):
@@ -83,6 +83,15 @@ class SessionManager:
     def get_recent(self, n: int) -> list[dict]:
         """Return the last N messages."""
         return self.get_history()[-n:]
+
+    def compact(self, summary_content: str, kept_messages: list[dict]) -> None:
+        """Replace session history with a summary + the messages to keep.
+        Used by ContextEngine to compress old history without touching _messages directly."""
+        self._messages = []
+        self.append("system", summary_content)
+        for m in kept_messages:
+            self._messages.append(m)
+        self.save()
 
     def clear(self):
         self._messages = []
