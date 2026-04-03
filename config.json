@@ -1,26 +1,21 @@
 {
   "providers": {
-    "priority": ["openai", "azure_openai", "google", "aws_bedrock", "ollama"],
+    "priority": ["azure_openai", "openai", "google", "aws_bedrock", "ollama"],
     "openai": {
-      "enabled": false,
       "model": "gpt-4o"
     },
     "azure_openai": {
-      "enabled": false,
       "deployment": "gpt-4o",
       "api_version": "2024-02-15-preview"
     },
     "google": {
-      "enabled": false,
       "model": "gemini-1.5-pro"
     },
     "aws_bedrock": {
-      "enabled": false,
       "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
       "region": "us-east-1"
     },
     "ollama": {
-      "enabled": false,
       "base_url": "http://localhost:11434",
       "model": "llama3.2"
     }

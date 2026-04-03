@@ -1,7 +1,17 @@
 import json
+import os
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
+
+# Environment variables that signal a provider is configured
+_PROVIDER_ENV_SIGNALS: dict[str, list[str]] = {
+    "openai":       ["OPENAI_API_KEY"],
+    "azure_openai": ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"],
+    "google":       ["GOOGLE_API_KEY"],
+    "aws_bedrock":  ["AWS_ACCESS_KEY_ID"],
+    "ollama":       ["OLLAMA_BASE_URL"],
+}
 
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -31,7 +41,15 @@ class ProvidersConfig:
         return self._data.get(name, {})
 
     def is_enabled(self, name: str) -> bool:
-        return self._data.get(name, {}).get("enabled", False)
+        # Explicit override in config.json takes precedence
+        cfg = self._data.get(name, {})
+        if "enabled" in cfg:
+            return bool(cfg["enabled"])
+        # Auto-enable if ALL required env vars for this provider are present
+        signals = _PROVIDER_ENV_SIGNALS.get(name, [])
+        if signals and all(os.environ.get(v) for v in signals):
+            return True
+        return False
 
 
 class AgentModelConfig:
