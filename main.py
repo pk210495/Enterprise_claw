@@ -101,6 +101,9 @@ def ensure_directories():
         config.soul_path.parent,
         config.plans_dir,
         config.bus_dir,
+        config.research_dir,
+        config.research_dir / "benchmarks",
+        config.human_review_dir,
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)

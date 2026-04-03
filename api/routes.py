@@ -4,9 +4,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent.orchestrator import Orchestrator
+from agent.research_loop import ResearchOrchestrator
 from agent.session import SessionManager
 from providers.registry import provider_registry
 from skills.registry import list_all_skills
+from tools.human_loop_tools import get_pending_reviews, resolve_review
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -135,6 +137,67 @@ async def provider_status():
             for name, healthy in statuses.items()
         ]
     }
+
+
+# ── Research loop endpoints ──────────────────────────────────────────────────
+
+class ResearchRequest(BaseModel):
+    session_id:      str = Field(..., description="Session identifier for this research run")
+    max_experiments: int = Field(10, description="Max experiments to run before stopping")
+
+
+@router.post("/research/run", summary="Start an autonomous experiment loop (SSE stream)")
+async def research_run(req: ResearchRequest):
+    """
+    Starts the autonomous research loop. Streams progress as SSE.
+    The agent reads program.md, forms hypotheses, runs experiments,
+    applies the git ratchet, and logs all findings autonomously.
+    Set max_experiments to control session length.
+    """
+    async def generator():
+        try:
+            orch = ResearchOrchestrator(
+                session_id=req.session_id,
+                max_experiments=req.max_experiments,
+            )
+            async for token in orch.run_loop():
+                yield f"data: {token}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            logger.exception(f"research loop error: {e}")
+            yield f"data: ERROR: {e}\n\n"
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
+
+
+# ── Human review / autonomy slider endpoints ─────────────────────────────────
+
+class ReviewDecision(BaseModel):
+    approved:      bool = Field(..., description="True to approve, False to reject")
+    reviewer_note: str  = Field("", description="Optional note explaining the decision")
+
+
+@router.get("/human-review", summary="List all pending agent approval requests")
+async def list_pending_reviews():
+    """Returns all actions the agent is waiting for human approval on."""
+    return {"pending": get_pending_reviews()}
+
+
+@router.post("/human-review/{request_id}", summary="Approve or reject a pending agent action")
+async def decide_review(request_id: str, decision: ReviewDecision):
+    """
+    Human approves or rejects an action the agent requested.
+    Once resolved, the agent's check_approval() call will unblock.
+    """
+    resolved = resolve_review(
+        request_id=request_id,
+        approved=decision.approved,
+        reviewer_note=decision.reviewer_note,
+    )
+    if not resolved:
+        raise HTTPException(status_code=404, detail=f"Review request '{request_id}' not found.")
+    verdict = "approved" if decision.approved else "rejected"
+    return {"status": verdict, "request_id": request_id}
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

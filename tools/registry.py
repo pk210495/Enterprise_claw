@@ -14,6 +14,10 @@ from .git_tools import GitTool
 from .task_tools import CreateTaskTool, UpdateTaskTool, ListTasksTool, GetTaskTool
 from .bus_tools import SendMessageTool, ReadMessagesTool, MarkReadTool, ListAgentsTool
 from .critic_tools import CritiqueOutputTool
+from .benchmark_tools import DefineBenchmarkTool, RunBenchmarkTool, GetBenchmarkHistoryTool, ListBenchmarksTool
+from .program_tools import ReadResearchProgramTool, WriteResearchProgramTool, GetResearchStatusTool
+from .research_tools import LogHypothesisTool, LogExperimentTool, LogFindingTool, ReadJournalTool
+from .human_loop_tools import RequestApprovalTool, CheckApprovalTool, GetAutonomyTierTool
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +74,24 @@ class ToolRegistry:
             ListAgentsTool(),
             # self-review / critic loop
             CritiqueOutputTool(),
+            # benchmark system (immutable eval lock + monotonic ratchet)
+            DefineBenchmarkTool(),
+            RunBenchmarkTool(),
+            GetBenchmarkHistoryTool(),
+            ListBenchmarksTool(),
+            # research program (program.md — human programs the agent)
+            ReadResearchProgramTool(),
+            WriteResearchProgramTool(),
+            GetResearchStatusTool(),
+            # experiment journal (hypothesis, results, findings, null-results)
+            LogHypothesisTool(),
+            LogExperimentTool(),
+            LogFindingTool(),
+            ReadJournalTool(),
+            # autonomy slider (human escalation queue)
+            RequestApprovalTool(),
+            CheckApprovalTool(),
+            GetAutonomyTierTool(),
         ]
         for tool in defaults:
             self._tools[tool.name] = tool

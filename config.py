@@ -125,5 +125,13 @@ class Config:
     def bus_dir(self) -> Path:
         return BASE_DIR / "storage" / "bus"
 
+    @property
+    def research_dir(self) -> Path:
+        return BASE_DIR / "storage" / "research"
+
+    @property
+    def human_review_dir(self) -> Path:
+        return BASE_DIR / "storage" / "human_review"
+
 
 config = Config(_cfg)
