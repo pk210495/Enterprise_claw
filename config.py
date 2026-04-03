@@ -63,7 +63,12 @@ class WorkspaceConfig:
     def __init__(self, data: dict):
         self.path: Path = BASE_DIR / data.get("path", "storage/workspace")
         self.allowed_extensions: list[str] = data.get(
-            "allowed_extensions", [".md", ".txt"]
+            "allowed_extensions",
+            [
+                ".md", ".txt", ".py", ".js", ".ts", ".json",
+                ".yaml", ".yml", ".toml", ".sh", ".html", ".css",
+                ".sql", ".env.example", ".gitignore",
+            ],
         )
 
 
@@ -111,6 +116,14 @@ class Config:
     @property
     def custom_skills_dir(self) -> Path:
         return BASE_DIR / "skills" / "custom"
+
+    @property
+    def plans_dir(self) -> Path:
+        return BASE_DIR / "storage" / "plans"
+
+    @property
+    def bus_dir(self) -> Path:
+        return BASE_DIR / "storage" / "bus"
 
 
 config = Config(_cfg)

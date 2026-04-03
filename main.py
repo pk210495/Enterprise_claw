@@ -99,6 +99,8 @@ def ensure_directories():
         config.custom_skills_dir,
         config.security_path.parent,
         config.soul_path.parent,
+        config.plans_dir,
+        config.bus_dir,
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)

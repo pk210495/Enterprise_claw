@@ -9,6 +9,11 @@ from .skill_tools import CreateSkillTool, EditSkillTool, ListSkillsTool, DeleteS
 from .search_tools import SearchInFilesTool
 from .system_tools import GetDatetimeTool, GetWorkspaceStatsTool, GetSessionInfoTool
 from .subagent_tools import SpawnSubagentsTool
+from .exec_tools import RunCodeTool
+from .git_tools import GitTool
+from .task_tools import CreateTaskTool, UpdateTaskTool, ListTasksTool, GetTaskTool
+from .bus_tools import SendMessageTool, ReadMessagesTool, MarkReadTool, ListAgentsTool
+from .critic_tools import CritiqueOutputTool
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +54,22 @@ class ToolRegistry:
             GetSessionInfoTool(),
             # subagents
             SpawnSubagentsTool(),
+            # code execution
+            RunCodeTool(),
+            # version control
+            GitTool(),
+            # task / project management
+            CreateTaskTool(),
+            UpdateTaskTool(),
+            ListTasksTool(),
+            GetTaskTool(),
+            # inter-agent message bus
+            SendMessageTool(),
+            ReadMessagesTool(),
+            MarkReadTool(),
+            ListAgentsTool(),
+            # self-review / critic loop
+            CritiqueOutputTool(),
         ]
         for tool in defaults:
             self._tools[tool.name] = tool

@@ -5,6 +5,7 @@ from providers.registry import provider_registry
 from tools.registry import ToolRegistry
 from tools.subagent_tools import set_subagent_runner
 from tools.skill_tools import set_skill_switcher
+from tools.critic_tools import set_critic_runner
 from agent.session import SessionManager
 from agent.context_engine import ContextEngine
 from agent.subagent_pool import SubagentPool
@@ -36,6 +37,8 @@ class Orchestrator:
 
         # inject subagent runner into the spawn tool
         set_subagent_runner(self._pool.run_all)
+        # inject the same runner into the critic tool (critic is a single subagent)
+        set_critic_runner(self._pool.run_all)
         # inject skill switcher so the model can switch skills via tool call
         set_skill_switcher(self._context.switch_skill)
 

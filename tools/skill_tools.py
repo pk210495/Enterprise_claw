@@ -7,7 +7,7 @@ from config import config
 logger = logging.getLogger(__name__)
 
 # Core skills are read-only for the agent
-_CORE_SKILL_NAMES = ["assistant", "coding", "researcher", "writer"]
+_CORE_SKILL_NAMES = ["assistant", "coding", "researcher", "writer", "critic"]
 
 
 def _validate_against_security(content: str) -> str | None:
