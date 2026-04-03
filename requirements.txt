@@ -11,7 +11,7 @@ openai==1.51.0          # Azure OpenAI + OpenAI direct
 boto3==1.35.0            # AWS Bedrock
 google-generativeai==0.8.3  # Google Gemini
 httpx==0.27.2            # Ollama HTTP client
-llama-cpp-python # Local GGUF models
+# llama-cpp-python  # Uncomment only if you need local GGUF models (requires C++ build tools)
 
 # Token counting
 tiktoken==0.8.0

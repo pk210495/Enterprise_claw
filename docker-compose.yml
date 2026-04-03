@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   agent:
     build: .
@@ -17,10 +15,10 @@ services:
       - PYTHONUNBUFFERED=1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
+      interval: 20s
       timeout: 10s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 40s
 
   whatsapp:
     build:

@@ -12,8 +12,8 @@ RUN useradd -m -u 1000 agent
 WORKDIR /app
 
 # Install Python deps first (layer cache)
-COPY requirements.txt whatsapp/requirements.txt* ./
-RUN pip install --no-cache-dir -r requirements.txt || true
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Install WhatsApp deps separately (optional)
 RUN pip install --no-cache-dir httpx twilio 2>/dev/null || true
