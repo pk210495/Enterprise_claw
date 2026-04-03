@@ -1,0 +1,57 @@
+{
+  "providers": {
+    "priority": ["openai", "azure_openai", "google", "aws_bedrock", "ollama"],
+    "openai": {
+      "enabled": false,
+      "model": "gpt-4o"
+    },
+    "azure_openai": {
+      "enabled": false,
+      "deployment": "gpt-4o",
+      "api_version": "2024-02-15-preview"
+    },
+    "google": {
+      "enabled": false,
+      "model": "gemini-1.5-pro"
+    },
+    "aws_bedrock": {
+      "enabled": false,
+      "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "region": "us-east-1"
+    },
+    "ollama": {
+      "enabled": false,
+      "base_url": "http://localhost:11434",
+      "model": "llama3.2"
+    }
+  },
+  "agents": {
+    "orchestrator": {
+      "provider": "auto",
+      "model": "auto"
+    },
+    "subagents": {
+      "provider": "auto",
+      "model": "auto",
+      "max_concurrent": 8
+    }
+  },
+  "context": {
+    "max_tokens": 180000,
+    "recent_messages_always_include": 20,
+    "compact_threshold": 0.85
+  },
+  "workspace": {
+    "path": "storage/workspace",
+    "allowed_extensions": [
+      ".md", ".txt", ".py", ".js", ".ts", ".json",
+      ".yaml", ".yml", ".toml", ".sh", ".html", ".css",
+      ".sql", ".env.example", ".gitignore"
+    ]
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "reload": false
+  }
+}

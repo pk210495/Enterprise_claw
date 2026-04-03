@@ -1,4 +1,6 @@
-config.json
+# config.json is committed (contains only defaults, no secrets — keys go in .env)
+# config.local.json  ← use this for local overrides (not committed)
+config.local.json
 __pycache__/
 *.pyc
 *.pyo

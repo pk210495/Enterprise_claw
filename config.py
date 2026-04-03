@@ -9,7 +9,7 @@ CONFIG_PATH = BASE_DIR / "config.json"
 
 def _load() -> dict:
     if not CONFIG_PATH.exists():
-        raise FileNotFoundError(f"config.json not found at {CONFIG_PATH}")
+        return {}
     with open(CONFIG_PATH) as f:
         return json.load(f)
 
