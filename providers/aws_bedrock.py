@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import AsyncGenerator
@@ -40,7 +41,6 @@ class AWSBedrockProvider(BaseProvider):
         tools: list[dict] | None = None,
         stream: bool = True,
     ) -> AsyncGenerator[dict, None]:
-        import asyncio
         client = self._get_client()
 
         # separate system from messages
@@ -69,24 +69,58 @@ class AWSBedrockProvider(BaseProvider):
                 body=json.dumps(body),
             )
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(None, _invoke)
 
         full_text = ""
         if stream:
+            # Track tool_use blocks across streaming events
+            tool_blocks: dict[int, dict] = {}
+            current_block_idx: int | None = None
+            current_block_type: str | None = None
+
             for event in response["body"]:
                 chunk = json.loads(event["chunk"]["bytes"])
                 t = chunk.get("type", "")
-                if t == "content_block_delta":
+
+                if t == "content_block_start":
+                    block = chunk.get("content_block", {})
+                    idx = chunk.get("index", 0)
+                    current_block_idx = idx
+                    current_block_type = block.get("type")
+                    if current_block_type == "tool_use":
+                        tool_blocks[idx] = {
+                            "id": block.get("id", ""),
+                            "name": block.get("name", ""),
+                            "arguments": "",
+                        }
+
+                elif t == "content_block_delta":
                     delta = chunk.get("delta", {})
-                    if delta.get("type") == "text_delta":
+                    delta_type = delta.get("type")
+                    if delta_type == "text_delta":
                         text = delta.get("text", "")
                         full_text += text
                         yield {"type": "text", "content": text}
-                    elif delta.get("type") == "input_json_delta":
-                        pass  # handled in stop event
+                    elif delta_type == "input_json_delta" and current_block_idx in tool_blocks:
+                        tool_blocks[current_block_idx]["arguments"] += delta.get("partial_json", "")
+
                 elif t == "content_block_stop":
-                    pass
+                    if current_block_idx in tool_blocks:
+                        tc = tool_blocks.pop(current_block_idx)
+                        try:
+                            args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                        except json.JSONDecodeError:
+                            args = {"raw": tc["arguments"]}
+                        yield {
+                            "type": "tool_call",
+                            "id": tc["id"],
+                            "name": tc["name"],
+                            "arguments": args,
+                        }
+                    current_block_idx = None
+                    current_block_type = None
+
                 elif t == "message_stop":
                     break
         else:
@@ -124,14 +158,14 @@ class AWSBedrockProvider(BaseProvider):
 
     async def is_healthy(self) -> bool:
         try:
-            import asyncio, boto3
+            import boto3
             client = boto3.client(
                 "bedrock",
                 region_name=self._region,
                 aws_access_key_id=self._access_key or None,
                 aws_secret_access_key=self._secret_key or None,
             )
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, lambda: client.list_foundation_models(maxResults=1))
             return True
         except Exception as e:

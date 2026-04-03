@@ -1,8 +1,11 @@
+import asyncio
 import logging
 from .base import BaseProvider
 from config import config
 
 logger = logging.getLogger(__name__)
+
+_HEALTH_CHECK_TIMEOUT = 10.0  # seconds per provider
 
 # lazy imports — only load providers that are enabled
 _PROVIDER_MAP = {
@@ -43,11 +46,17 @@ class ProviderRegistry:
                 continue
             try:
                 provider = _load_provider(name)
-                if await provider.is_healthy():
+                healthy = await asyncio.wait_for(
+                    provider.is_healthy(), timeout=_HEALTH_CHECK_TIMEOUT
+                )
+                if healthy:
                     logger.info(f"provider selected: {name}")
                     return provider
                 else:
                     logger.debug(f"provider '{name}' is not healthy — trying next")
+            except asyncio.TimeoutError:
+                logger.debug(f"provider '{name}' health check timed out — trying next")
+                continue
             except Exception as e:
                 logger.debug(f"provider '{name}' failed to load: {e}")
                 continue
@@ -73,8 +82,10 @@ class ProviderRegistry:
                 continue
             try:
                 provider = _load_provider(name)
-                statuses[name] = await provider.is_healthy()
-            except Exception:
+                statuses[name] = await asyncio.wait_for(
+                    provider.is_healthy(), timeout=_HEALTH_CHECK_TIMEOUT
+                )
+            except (asyncio.TimeoutError, Exception):
                 statuses[name] = False
         return statuses
 

@@ -176,3 +176,7 @@ class Orchestrator:
     @property
     def session_id(self) -> str:
         return self._session.session_id
+
+    @property
+    def message_count(self) -> int:
+        return self._session.message_count

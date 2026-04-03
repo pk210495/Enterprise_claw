@@ -40,7 +40,7 @@ async def chat(req: ChatRequest):
         return ChatResponse(
             session_id=req.session_id,
             reply=reply,
-            message_count=orch._session.message_count,
+            message_count=orch.message_count,
         )
     except Exception as e:
         logger.exception(f"chat error: {e}")

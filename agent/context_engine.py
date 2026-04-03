@@ -49,7 +49,7 @@ class ContextEngine:
 
         try:
             skill_content = load_skill(self._skill)
-        except Exception as e:
+        except (FileNotFoundError, ValueError) as e:
             logger.warning(f"Skill '{self._skill}' not found — using empty skill: {e}")
             skill_content = ""
 
@@ -130,12 +130,20 @@ class ContextEngine:
 
         # fill with older messages newest-first until budget reached
         filler = []
-        for msg in reversed(older):
-            msg_tokens = await provider.count_tokens([msg])
-            if current_tokens + msg_tokens > budget:
-                break
-            filler.insert(0, msg)
-            current_tokens += msg_tokens
+        if older:
+            older_total = await provider.count_tokens(older)
+            if current_tokens + older_total <= budget:
+                # all older messages fit — include them all in one shot
+                filler = list(older)
+                current_tokens += older_total
+            else:
+                # trim: count each message individually only when we must
+                for msg in reversed(older):
+                    msg_tokens = await provider.count_tokens([msg])
+                    if current_tokens + msg_tokens > budget:
+                        break
+                    filler.insert(0, msg)
+                    current_tokens += msg_tokens
 
         messages = [system_msg] + filler + recent
         logger.debug(
@@ -190,12 +198,8 @@ class ContextEngine:
             "content": f"[CONVERSATION SUMMARY — earlier context]\n{summary_text}",
         }
 
-        # rebuild session with summary + kept messages
-        self._session._messages = []
-        self._session.append("system", summary_message["content"])
-        for m in keep_msgs:
-            self._session._messages.append(m)
-        self._session.save()
+        # rebuild session with summary + kept messages via public API
+        self._session.compact(summary_message["content"], keep_msgs)
         logger.info(f"compact complete — session now has {self._session.message_count} messages")
 
     # ── Maintain ─────────────────────────────────────────────────────────────
