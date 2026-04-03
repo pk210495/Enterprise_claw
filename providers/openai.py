@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import AsyncGenerator
 
 from .base import BaseProvider
@@ -13,8 +14,8 @@ class OpenAIProvider(BaseProvider):
 
     def __init__(self):
         cfg = config.providers.get("openai")
-        self._api_key = cfg.get("api_key", "")
-        self._default_model = cfg.get("model", "gpt-4o")
+        self._api_key = os.environ.get("OPENAI_API_KEY") or cfg.get("api_key", "")
+        self._default_model = os.environ.get("OPENAI_MODEL") or cfg.get("model", "gpt-4o")
         self._client = None
 
     def _get_client(self):

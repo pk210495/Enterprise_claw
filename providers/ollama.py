@@ -14,9 +14,10 @@ class OllamaProvider(BaseProvider):
     """Ollama local model provider — llama3, mistral, codellama, phi3, etc."""
 
     def __init__(self):
+        import os
         cfg = config.providers.get("ollama")
-        self._host = cfg.get("host", "http://localhost:11434").rstrip("/")
-        self._default_model = cfg.get("model", "llama3")
+        self._host = (os.environ.get("OLLAMA_BASE_URL") or cfg.get("base_url") or cfg.get("host", "http://localhost:11434")).rstrip("/")
+        self._default_model = os.environ.get("OLLAMA_MODEL") or cfg.get("model", "llama3")
 
     @property
     def name(self) -> str:

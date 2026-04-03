@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import AsyncGenerator
 
 from .base import BaseProvider
@@ -13,14 +14,22 @@ class AzureOpenAIProvider(BaseProvider):
     Azure OpenAI provider — supports both GPT and Claude (Anthropic) deployments on Azure.
     Uses the openai SDK pointed at the Azure endpoint.
     Auth uses api-key header instead of Bearer token (Azure requirement).
+
+    Credentials are read from environment variables first, with config.json as fallback:
+      AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT,
+      AZURE_OPENAI_API_VERSION
     """
 
     def __init__(self):
         cfg = config.providers.get("azure_openai")
-        self._endpoint = cfg.get("endpoint", "")
-        self._api_key = cfg.get("api_key", "")
-        self._api_version = cfg.get("api_version", "2024-02-01")
-        self._default_model = cfg.get("model", "claude-3-7-sonnet")
+        self._endpoint    = os.environ.get("AZURE_OPENAI_ENDPOINT")    or cfg.get("endpoint", "")
+        self._api_key     = os.environ.get("AZURE_OPENAI_API_KEY")     or cfg.get("api_key", "")
+        self._api_version = os.environ.get("AZURE_OPENAI_API_VERSION") or cfg.get("api_version", "2024-02-15-preview")
+        self._default_model = (
+            os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+            or cfg.get("deployment")
+            or cfg.get("model", "gpt-4o")
+        )
         self._client = None
 
     def _get_client(self):

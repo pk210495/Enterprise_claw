@@ -13,11 +13,12 @@ class AWSBedrockProvider(BaseProvider):
     """AWS Bedrock provider — Claude, Titan, Llama via AWS."""
 
     def __init__(self):
+        import os
         cfg = config.providers.get("aws_bedrock")
-        self._region = cfg.get("region", "us-east-1")
-        self._access_key = cfg.get("access_key_id", "")
-        self._secret_key = cfg.get("secret_access_key", "")
-        self._default_model = cfg.get("model", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+        self._region      = os.environ.get("AWS_DEFAULT_REGION")     or cfg.get("region", "us-east-1")
+        self._access_key  = os.environ.get("AWS_ACCESS_KEY_ID")      or cfg.get("access_key_id", "")
+        self._secret_key  = os.environ.get("AWS_SECRET_ACCESS_KEY")  or cfg.get("secret_access_key", "")
+        self._default_model = os.environ.get("BEDROCK_MODEL")        or cfg.get("model", "anthropic.claude-3-5-sonnet-20241022-v2:0")
         self._client = None
 
     def _get_client(self):

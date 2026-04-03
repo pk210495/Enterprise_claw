@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import AsyncGenerator
 
 from .base import BaseProvider
@@ -13,8 +14,8 @@ class GoogleProvider(BaseProvider):
 
     def __init__(self):
         cfg = config.providers.get("google")
-        self._api_key = cfg.get("api_key", "")
-        self._default_model = cfg.get("model", "gemini-1.5-pro")
+        self._api_key = os.environ.get("GOOGLE_API_KEY") or cfg.get("api_key", "")
+        self._default_model = os.environ.get("GOOGLE_MODEL") or cfg.get("model", "gemini-1.5-pro")
         self._client = None
 
     def _get_client(self):
