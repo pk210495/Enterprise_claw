@@ -624,8 +624,23 @@ textarea { font-family: inherit; }
 </div>
 
 <script>
+// ===== Helpers =====
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return generateUUID();
+  // Fallback for HTTP (non-secure) contexts
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
 // ===== Configuration =====
-const API_BASE = 'http://localhost:8000';
+// Auto-detect: use same host as the page (works for both local dev and VPS),
+// or set VITE_API_BASE / window.API_BASE_OVERRIDE to point elsewhere.
+const API_BASE = window.API_BASE_OVERRIDE
+  || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? `http://${window.location.hostname}:8000`
+      : `${window.location.protocol}//${window.location.hostname}:8000`);
 
 // ===== State =====
 let currentSessionId = null;
@@ -739,7 +754,7 @@ async function selectSession(id) {
 
 async function createNewSession() {
   // Generate a UUID-like id client-side; the server will create it on first message
-  currentSessionId = crypto.randomUUID();
+  currentSessionId = generateUUID();
   renderSessions();
   clearChat();
   closeSidebarMobile();
@@ -924,7 +939,7 @@ async function sendMessage() {
 
   // Ensure session
   if (!currentSessionId) {
-    currentSessionId = crypto.randomUUID();
+    currentSessionId = generateUUID();
   }
 
   // Display user message
