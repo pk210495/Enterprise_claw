@@ -109,56 +109,69 @@ class Orchestrator:
     async def run_stream(self, message: str) -> AsyncGenerator[str, None]:
         """
         Run agent turn with streaming.
-        Yields text tokens as they arrive.
-        Tool execution happens silently between model calls.
+        Yields newline-delimited JSON events:
+          {"type":"text",     "content":"..."}   — final response text (stream it)
+          {"type":"thinking", "content":"..."}   — intermediate reasoning (hidden by default)
+          {"type":"tool_start","name":"...","args":{}}  — tool about to run
+          {"type":"tool_end",  "name":"...","result":"...","ok":true}  — tool finished
         """
+        import json
+
         provider = await self._get_provider()
-
-        # always bootstrap system prompt — ensures security constitution is present
         self._context.bootstrap(self._tools.schemas())
-
         self._context.ingest("user", message)
 
         full_response = ""
         for iteration in range(MAX_TOOL_ITERATIONS):
             messages = await self._context.assemble(provider)
             tool_calls_this_turn = []
+            text_chunks: list[str] = []
             turn_text = ""
-
-            # only stream on the final turn (no tools pending)
-            # for intermediate turns, don't stream to avoid partial output
-            use_stream = iteration == 0  # stream first response tentatively
 
             async for chunk in provider.chat(
                 messages=messages,
                 tools=self._tools.schemas(),
-                stream=use_stream,
+                stream=True,
             ):
                 if chunk["type"] == "text":
+                    text_chunks.append(chunk["content"])
                     turn_text += chunk["content"]
-                    yield chunk["content"]
                 elif chunk["type"] == "tool_call":
                     tool_calls_this_turn.append(chunk)
                 elif chunk["type"] == "done":
-                    if not turn_text:
+                    if not turn_text and chunk.get("content"):
                         turn_text = chunk["content"]
-                        if turn_text:
-                            yield turn_text
+                        text_chunks = [turn_text]
 
             if not tool_calls_this_turn:
+                # Final iteration — stream text chunks as "text" events
+                for ch in text_chunks:
+                    if ch:
+                        yield json.dumps({"type": "text", "content": ch})
                 full_response = turn_text
                 break
 
-            # tool calls found — notify user and process
-            yield "\n\n[using tools...]\n\n"
+            # Intermediate iteration — emit thinking + tool events
+            if turn_text.strip():
+                yield json.dumps({"type": "thinking", "content": turn_text})
 
             for tc in tool_calls_this_turn:
                 self._context.ingest_tool_call(tc["id"], tc["name"], tc["arguments"])
-
-            for tc in tool_calls_this_turn:
+                yield json.dumps({
+                    "type": "tool_start",
+                    "name": tc["name"],
+                    "args": tc["arguments"],
+                })
                 result = await self._tools.execute(tc["name"], tc["arguments"])
-                result_text = result.output if result.success else f"ERROR: {result.error}"
+                ok = result.success
+                result_text = result.output if ok else f"ERROR: {result.error}"
                 self._context.ingest_tool_result(tc["id"], tc["name"], str(result_text))
+                yield json.dumps({
+                    "type": "tool_end",
+                    "name": tc["name"],
+                    "result": str(result_text)[:3000],
+                    "ok": ok,
+                })
 
             turn_text = ""
 
