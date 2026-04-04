@@ -730,10 +730,9 @@ textarea { font-family: inherit; }
 </div>
 
 <script>
-// ===== Helpers =====
+// ===== UUID helper =====
 function generateUUID() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return generateUUID();
-  // Fallback for HTTP (non-secure) contexts
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0;
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
@@ -741,8 +740,6 @@ function generateUUID() {
 }
 
 // ===== Configuration =====
-// Auto-detect: use same host as the page (works for both local dev and VPS),
-// or set VITE_API_BASE / window.API_BASE_OVERRIDE to point elsewhere.
 const API_BASE = window.API_BASE_OVERRIDE
   || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? `http://${window.location.hostname}:8000`
@@ -755,19 +752,8 @@ let abortController = null;
 let sessions = [];
 let skills = [];
 
-// ===== Markdown setup =====
-marked.setOptions({
-  highlight: (code, lang) => {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value;
-    }
-    return hljs.highlightAuto(code).value;
-  },
-  breaks: true,
-  gfm: true
-});
-
-// Custom renderer for code blocks with copy button
+// ===== Markdown =====
+marked.setOptions({ breaks: true, gfm: true });
 const renderer = new marked.Renderer();
 renderer.code = function(obj) {
   const text = typeof obj === 'object' ? obj.text : obj;
@@ -775,34 +761,27 @@ renderer.code = function(obj) {
   const highlighted = lang && hljs.getLanguage(lang)
     ? hljs.highlight(text, { language: lang }).value
     : hljs.highlightAuto(text).value;
-  const label = lang || 'code';
-  return `<div class="code-header"><span>${label}</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="hljs">${highlighted}</code></pre>`;
+  return `<div class="code-header"><span>${lang||'code'}</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="hljs">${highlighted}</code></pre>`;
 };
 marked.setOptions({ renderer });
 
-// ===== API Helpers =====
+// ===== API helper =====
 async function api(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
+    headers: { 'Content-Type': 'application/json' }, ...options
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-// ===== Health Check =====
+// ===== Health =====
 async function checkHealth() {
   const dot = document.getElementById('healthDot');
   const text = document.getElementById('healthText');
   try {
-    const data = await api('/health');
-    if (data.status === 'ok') {
-      dot.className = 'status-dot healthy';
-      text.textContent = 'Connected';
-    } else {
-      dot.className = 'status-dot unhealthy';
-      text.textContent = 'Degraded';
-    }
+    const d = await api('/health');
+    dot.className = d.status === 'ok' ? 'status-dot healthy' : 'status-dot unhealthy';
+    text.textContent = d.status === 'ok' ? 'Connected' : 'Degraded';
   } catch {
     dot.className = 'status-dot unhealthy';
     text.textContent = 'Disconnected';
@@ -812,12 +791,10 @@ async function checkHealth() {
 // ===== Sessions =====
 async function loadSessions() {
   try {
-    const data = await api('/sessions');
-    sessions = data.sessions || [];
+    const d = await api('/sessions');
+    sessions = d.sessions || [];
     renderSessions();
-  } catch (e) {
-    console.error('Failed to load sessions:', e);
-  }
+  } catch(e) { console.error('Failed to load sessions:', e); }
 }
 
 function renderSessions() {
@@ -826,280 +803,277 @@ function renderSessions() {
     el.innerHTML = '<div class="no-sessions">No sessions yet</div>';
     return;
   }
-  const sorted = [...sessions].sort((a, b) => new Date(b.modified_at) - new Date(a.modified_at));
-  el.innerHTML = sorted.map(s => {
-    const shortId = s.session_id.slice(0, 8);
-    const date = new Date(s.modified_at);
-    const timeStr = date.toLocaleDateString(undefined, { month:'short', day:'numeric' }) +
-                    ' ' + date.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
-    const active = s.session_id === currentSessionId ? ' active' : '';
-    return `
-      <div class="session-item${active}" onclick="selectSession('${s.session_id}')" data-id="${s.session_id}">
-        <svg class="session-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+  el.innerHTML = sessions.map(s => `
+    <div class="session-item ${s.session_id === currentSessionId ? 'active' : ''}"
+         onclick="selectSession('${s.session_id}')">
+      <svg class="session-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <div class="session-item-text">
+        <div class="session-item-name">${s.session_id.slice(0,8)}...</div>
+        <div class="session-item-meta">${s.message_count || 0} messages</div>
+      </div>
+      <button class="session-delete-btn" onclick="deleteSession(event,'${s.session_id}')"
+        title="Delete session">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+          <path d="M10 11v6m4-6v6"/><path d="M9 6V4h6v2"/>
         </svg>
-        <div class="session-item-text">
-          <div class="session-item-name">${shortId}</div>
-          <div class="session-item-meta">${timeStr}</div>
-        </div>
-        <button class="session-delete-btn" onclick="event.stopPropagation(); deleteSession('${s.session_id}')" title="Delete session">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-          </svg>
-        </button>
-      </div>`;
-  }).join('');
+      </button>
+    </div>`).join('');
 }
 
 async function selectSession(id) {
   currentSessionId = id;
-  renderSessions();
+  document.getElementById('messagesContainer').innerHTML = '';
+  removeWelcome();
   closeSidebarMobile();
-  await loadHistory(id);
+  try {
+    const d = await api(`/sessions/${id}/history`);
+    (d.messages || []).forEach(m => {
+      if (m.role === 'user' || m.role === 'assistant') {
+        appendMessage(m.role, typeof m.content === 'string' ? m.content : JSON.stringify(m.content), false);
+      }
+    });
+    scrollToBottom();
+  } catch(e) { console.error('Failed to load history:', e); }
+  renderSessions();
 }
 
-async function createNewSession() {
-  // Generate a UUID-like id client-side; the server will create it on first message
+async function deleteSession(e, id) {
+  e.stopPropagation();
+  if (!confirm('Delete this session?')) return;
+  await api(`/sessions/${id}`, { method: 'DELETE' });
+  if (currentSessionId === id) { currentSessionId = null; clearChat(); }
+  loadSessions();
+}
+
+function createNewSession() {
   currentSessionId = generateUUID();
-  renderSessions();
   clearChat();
   closeSidebarMobile();
-  document.getElementById('chatInput').focus();
-}
-
-async function deleteSession(id) {
-  if (!confirm('Delete this session?')) return;
-  try {
-    await api(`/sessions/${id}`, { method: 'DELETE' });
-    if (currentSessionId === id) {
-      currentSessionId = null;
-      clearChat();
-    }
-    await loadSessions();
-  } catch (e) {
-    console.error('Failed to delete session:', e);
-  }
-}
-
-async function loadHistory(sessionId) {
-  const container = document.getElementById('messagesContainer');
-  container.innerHTML = '';
-  document.getElementById('welcomeScreen')?.remove();
-  try {
-    const data = await api(`/sessions/${sessionId}/history`);
-    const messages = data.messages || [];
-    if (!messages.length) {
-      showWelcome();
-      return;
-    }
-    messages.forEach(m => appendMessage(m.role, m.content, false));
-    scrollToBottom();
-  } catch (e) {
-    console.error('Failed to load history:', e);
-    showWelcome();
-  }
+  renderSessions();
 }
 
 // ===== Skills =====
 async function loadSkills() {
   try {
-    const data = await api('/skills');
-    // API returns {skills: {name: "core"|"custom"}} — convert to array
-    const raw = data.skills || {};
-    skills = Array.isArray(raw) ? raw : Object.keys(raw);
+    const d = await api('/skills');
+    skills = d.skills || [];
     const sel = document.getElementById('skillSelector');
-    sel.innerHTML = '<option value="">Default (no skill)</option>' +
-      skills.map(name => {
-        const source = raw[name] || '';
-        const label = source === 'custom' ? `${name} ★` : name;
-        return `<option value="${name}">${label}</option>`;
-      }).join('');
-  } catch (e) {
-    console.error('Failed to load skills:', e);
-  }
+    sel.innerHTML = '<option value="assistant">assistant (default)</option>' +
+      skills.filter(s => s !== 'assistant').map(s => `<option value="${s}">${s}</option>`).join('');
+  } catch(e) { console.error('Failed to load skills:', e); }
 }
 
 // ===== Providers =====
 async function loadProviders() {
   try {
-    const data = await api('/providers/status');
-    const providers = data.providers || [];
-    const el = document.getElementById('providerList');
-    if (!providers.length) {
-      el.innerHTML = '<div class="provider-item"><span class="status-dot unknown"></span>None configured</div>';
-      return;
-    }
-    el.innerHTML = providers.map(p => {
-      const cls = p.healthy ? 'healthy' : 'unhealthy';
-      return `<div class="provider-item"><span class="status-dot ${cls}"></span>${p.name}</div>`;
-    }).join('');
-  } catch (e) {
-    console.error('Failed to load providers:', e);
-    document.getElementById('providerList').innerHTML =
-      '<div class="provider-item"><span class="status-dot unhealthy"></span>Error loading</div>';
-  }
+    const d = await api('/providers/status');
+    const list = document.getElementById('providerList');
+    list.innerHTML = (d.providers || []).map(p => `
+      <div class="provider-item">
+        <span class="status-dot ${p.healthy ? 'healthy' : 'unhealthy'}"></span>
+        ${p.name}
+      </div>`).join('') || '<div class="provider-item">No providers</div>';
+  } catch(e) { console.error('Failed to load providers:', e); }
 }
 
-// ===== Chat =====
-function clearChat() {
-  const container = document.getElementById('messagesContainer');
-  container.innerHTML = '';
-  showWelcome();
-}
-
-function showWelcome() {
-  const container = document.getElementById('messagesContainer');
-  if (document.getElementById('welcomeScreen')) return;
-  container.innerHTML = `
-    <div class="welcome-screen" id="welcomeScreen">
-      <div class="welcome-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/></svg>
-      </div>
-      <h2 class="welcome-title">Agent Server</h2>
-      <p class="welcome-sub">Start a conversation by typing a message below, or select an existing session from the sidebar.</p>
-    </div>`;
-}
-
+// ===== Message rendering =====
 function removeWelcome() {
   const w = document.getElementById('welcomeScreen');
   if (w) w.remove();
 }
 
+function clearChat() {
+  const c = document.getElementById('messagesContainer');
+  c.innerHTML = `
+    <div class="welcome-screen" id="welcomeScreen">
+      <div class="welcome-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+          <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+          <circle cx="9" cy="9" r="1" fill="currentColor"/>
+          <circle cx="15" cy="9" r="1" fill="currentColor"/>
+        </svg>
+      </div>
+      <h2 class="welcome-title">Agent Server</h2>
+      <p class="welcome-sub">Start a new conversation below.</p>
+    </div>`;
+}
+
 function appendMessage(role, content, animate = true) {
   removeWelcome();
-  const container = document.getElementById('messagesContainer');
+  const c = document.getElementById('messagesContainer');
   const div = document.createElement('div');
   div.className = `message ${role}`;
   if (!animate) div.style.animation = 'none';
-
-  const avatarLetter = role === 'user' ? 'U' : 'A';
   const time = new Date().toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
-
-  let rendered = content;
-  if (role === 'assistant') {
-    rendered = processAssistantContent(content);
-  } else {
-    rendered = escapeHtml(content);
-  }
-
+  const rendered = role === 'assistant'
+    ? renderMarkdown(content)
+    : escapeHtml(content);
   div.innerHTML = `
-    <div class="message-avatar">${avatarLetter}</div>
+    <div class="message-avatar">${role === 'user' ? 'U' : 'A'}</div>
     <div class="message-content">
       <div class="message-bubble">${rendered}</div>
       <div class="message-time">${time}</div>
     </div>`;
-
-  container.appendChild(div);
+  c.appendChild(div);
+  scrollToBottom();
   return div;
 }
 
-function processAssistantContent(content) {
-  // Replace [using tools...] patterns with visual indicator
-  const toolPattern = /\[using tools?\.{0,3}\]/gi;
-  let processed = content.replace(toolPattern, () =>
-    `<div class="tool-indicator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4m-7.07-15.07l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>Using tools...</div>`
-  );
-  try {
-    return marked.parse(processed);
-  } catch {
-    return escapeHtml(processed);
-  }
-}
-
-function escapeHtml(str) {
+// Returns a fresh assistant message wrapper with empty bubble + events area
+function createAssistantTurn() {
+  removeWelcome();
+  const c = document.getElementById('messagesContainer');
   const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  div.className = 'message assistant';
+  const time = new Date().toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+  div.innerHTML = `
+    <div class="message-avatar">A</div>
+    <div class="message-content">
+      <div class="turn-events"></div>
+      <div class="message-bubble" style="display:none"></div>
+      <div class="message-time">${time}</div>
+    </div>`;
+  c.appendChild(div);
+  scrollToBottom();
+  return div;
 }
 
+// ===== Tool block =====
+function createToolBlock(name, args) {
+  const block = document.createElement('div');
+  block.className = 'tool-block';
+  const argsStr = Object.keys(args).length
+    ? Object.entries(args).map(([k,v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n')
+    : '(no args)';
+  block.innerHTML = `
+    <div class="tool-block-header" onclick="this.parentElement.classList.toggle('expanded')">
+      <div class="tool-block-spinner"></div>
+      <span class="tool-block-name">${escapeHtml(name)}</span>
+      <span class="tool-block-status">running…</span>
+      <svg class="tool-block-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </div>
+    <div class="tool-block-body">
+      <div class="tool-block-args">${escapeHtml(argsStr)}</div>
+      <div class="tool-block-result" style="display:none"></div>
+    </div>`;
+  return block;
+}
+
+function finalizeToolBlock(block, result, ok) {
+  const spinner = block.querySelector('.tool-block-spinner');
+  const status = block.querySelector('.tool-block-status');
+  const resultEl = block.querySelector('.tool-block-result');
+  if (spinner) {
+    spinner.style.display = 'none';
+    // replace with icon
+    const icon = document.createElement('span');
+    icon.className = 'tool-block-icon';
+    icon.textContent = ok ? '✓' : '✗';
+    icon.style.color = ok ? '#4ade80' : '#f87171';
+    block.querySelector('.tool-block-header').prepend(icon);
+  }
+  status.textContent = ok ? 'done' : 'error';
+  resultEl.className = `tool-block-result${ok ? '' : ' error'}`;
+  resultEl.textContent = result;
+  resultEl.style.display = 'block';
+}
+
+// ===== Thinking block =====
+function createThinkingBlock(content) {
+  const block = document.createElement('div');
+  block.className = 'thinking-block';
+  block.innerHTML = `
+    <div class="thinking-block-header" onclick="this.parentElement.classList.toggle('expanded')">
+      <span>💭</span>
+      <span class="thinking-block-label">Reasoning (click to expand)</span>
+      <svg style="width:14px;height:14px;color:var(--text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </div>
+    <div class="thinking-block-body">${escapeHtml(content)}</div>`;
+  return block;
+}
+
+// ===== Show thinking indicator =====
 function showThinking() {
   removeWelcome();
-  const container = document.getElementById('messagesContainer');
+  const c = document.getElementById('messagesContainer');
   const div = document.createElement('div');
   div.className = 'thinking';
   div.id = 'thinkingIndicator';
   div.innerHTML = `
     <div class="message-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">A</div>
     <div class="thinking-dots"><span></span><span></span><span></span></div>`;
-  container.appendChild(div);
+  c.appendChild(div);
   scrollToBottom();
 }
-
 function removeThinking() {
   const el = document.getElementById('thinkingIndicator');
   if (el) el.remove();
 }
 
-function scrollToBottom() {
-  const area = document.getElementById('chatArea');
-  requestAnimationFrame(() => {
-    area.scrollTop = area.scrollHeight;
-  });
-}
-
-// ===== Send Message =====
+// ===== Send message =====
 async function sendMessage() {
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
   if (!text || isStreaming) return;
+  if (!currentSessionId) currentSessionId = generateUUID();
 
-  // Ensure session
-  if (!currentSessionId) {
-    currentSessionId = generateUUID();
-  }
-
-  // Display user message
   appendMessage('user', text);
-  scrollToBottom();
   input.value = '';
   autoResize(input);
   updateCharCount();
 
-  const skill = document.getElementById('skillSelector').value || undefined;
-  const body = { session_id: currentSessionId, message: text };
-  if (skill) body.skill = skill;
+  const skill = document.getElementById('skillSelector').value || 'assistant';
+  const body = { session_id: currentSessionId, message: text, skill };
 
   isStreaming = true;
   updateSendBtn();
   showThinking();
 
-  // Try SSE streaming first
   try {
     await streamChat(body);
-  } catch (e) {
-    console.warn('Streaming failed, falling back to regular chat:', e);
+  } catch(e) {
+    console.warn('Streaming failed, falling back:', e);
     removeThinking();
-    try {
-      await fallbackChat(body);
-    } catch (e2) {
+    try { await fallbackChat(body); }
+    catch(e2) {
       removeThinking();
-      appendMessage('assistant', 'Error: Failed to get response. Please check that the server is running.');
-      scrollToBottom();
+      appendMessage('assistant', 'Error: Failed to get response. Please check server.');
     }
   }
 
   isStreaming = false;
   updateSendBtn();
-  loadSessions(); // refresh session list
+  loadSessions();
 }
 
 async function streamChat(body) {
   abortController = new AbortController();
-
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    signal: abortController.signal
+    signal: abortController.signal,
   });
-
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
   removeThinking();
 
-  const msgDiv = appendMessage('assistant', '');
-  const bubble = msgDiv.querySelector('.message-bubble');
+  // Create the turn container (events + bubble)
+  const turn = createAssistantTurn();
+  const eventsEl = turn.querySelector('.turn-events');
+  const bubble = turn.querySelector('.message-bubble');
+
   let fullText = '';
+  // Map tool name → block element (for finalization)
+  const toolBlocks = {};
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -1108,104 +1082,133 @@ async function streamChat(body) {
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
 
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6);
+      const data = line.slice(6).trim();
       if (data === '[DONE]') break;
-      fullText += data;
-      bubble.innerHTML = processAssistantContent(fullText);
+      if (!data) continue;
+
+      // Try to parse as JSON event (new format)
+      let event = null;
+      try { event = JSON.parse(data); } catch {}
+
+      if (event && event.type) {
+        handleStreamEvent(event, eventsEl, bubble, toolBlocks);
+        fullText = bubble.dataset.text || fullText;
+      } else {
+        // Legacy plain text fallback
+        fullText += data;
+        bubble.style.display = '';
+        bubble.innerHTML = renderMarkdown(fullText);
+        bubble.dataset.text = fullText;
+      }
       scrollToBottom();
     }
   }
+}
 
-  // Final render
-  if (fullText) {
-    bubble.innerHTML = processAssistantContent(fullText);
-    scrollToBottom();
+function handleStreamEvent(event, eventsEl, bubble, toolBlocks) {
+  if (event.type === 'text') {
+    bubble.style.display = '';
+    const prev = bubble.dataset.text || '';
+    const next = prev + event.content;
+    bubble.dataset.text = next;
+    bubble.innerHTML = renderMarkdown(next);
+
+  } else if (event.type === 'thinking') {
+    const block = createThinkingBlock(event.content);
+    eventsEl.appendChild(block);
+
+  } else if (event.type === 'tool_start') {
+    const block = createToolBlock(event.name, event.args || {});
+    eventsEl.appendChild(block);
+    // Key by name (last one wins if same tool called twice — fine for display)
+    toolBlocks[event.name] = block;
+
+  } else if (event.type === 'tool_end') {
+    const block = toolBlocks[event.name];
+    if (block) finalizeToolBlock(block, event.result || '', event.ok !== false);
   }
+  scrollToBottom();
 }
 
 async function fallbackChat(body) {
-  const data = await api('/chat', {
-    method: 'POST',
-    body: JSON.stringify(body)
-  });
+  const d = await api('/chat', { method: 'POST', body: JSON.stringify(body) });
   removeThinking();
-  appendMessage('assistant', data.reply || 'No response');
-  scrollToBottom();
-
-  // Update session id if server assigned one
-  if (data.session_id) currentSessionId = data.session_id;
+  appendMessage('assistant', d.reply || 'No response');
+  if (d.session_id) currentSessionId = d.session_id;
 }
 
-// ===== UI Helpers =====
+// ===== Helpers =====
 function handleInputKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
-
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 160) + 'px';
 }
-
 function updateCharCount() {
-  const input = document.getElementById('chatInput');
-  const count = document.getElementById('charCount');
-  const len = input.value.length;
-  count.textContent = len > 0 ? len.toLocaleString() : '0';
+  document.getElementById('charCount').textContent = document.getElementById('chatInput').value.length.toLocaleString();
 }
-
 function updateSendBtn() {
   const btn = document.getElementById('sendBtn');
   const input = document.getElementById('chatInput');
   btn.disabled = isStreaming || !input.value.trim();
 }
-
 document.getElementById('chatInput').addEventListener('input', () => updateSendBtn());
 
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sidebarOverlay').classList.toggle('show');
 }
-
 function closeSidebarMobile() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
 }
 
+function stopStreaming() {
+  if (abortController) { abortController.abort(); abortController = null; }
+  isStreaming = false;
+  updateSendBtn();
+  removeThinking();
+}
+
 function copyCode(btn) {
-  const pre = btn.closest('.message-bubble').querySelector('pre code');
-  if (!pre) return;
-  navigator.clipboard.writeText(pre.textContent).then(() => {
+  const pre = btn.closest('.message-bubble, .tool-block-result');
+  const code = pre ? pre.querySelector('code') : null;
+  const text = code ? code.textContent : '';
+  navigator.clipboard.writeText(text).then(() => {
     btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    setTimeout(() => btn.textContent = 'Copy', 1500);
   });
+}
+
+function scrollToBottom() {
+  const area = document.getElementById('chatArea');
+  requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
+}
+
+function renderMarkdown(text) {
+  try { return marked.parse(text); }
+  catch { return escapeHtml(text); }
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
 }
 
 // ===== Init =====
 async function init() {
-  await Promise.all([
-    checkHealth(),
-    loadSessions(),
-    loadSkills(),
-    loadProviders()
-  ]);
-
-  // Periodic health check
-  setInterval(checkHealth, 15000);
-  setInterval(loadProviders, 30000);
-
-  document.getElementById('chatInput').focus();
+  await Promise.all([checkHealth(), loadSessions(), loadSkills(), loadProviders()]);
+  setInterval(checkHealth, 30000);
+  setInterval(loadProviders, 60000);
 }
-
 init();
 </script>
 </body>
